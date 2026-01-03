@@ -5,6 +5,7 @@ import re
 import tempfile
 import json
 import sys
+import shutil
 from tqdm import tqdm
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
@@ -41,7 +42,7 @@ def sorted_images(zip_file: zipfile.ZipFile):
     return sorted(images, key=sort_key)
 
 
-def process_cbz_images(cbz_files, output_cbz):
+def process_cbz_images(cbz_files, output_cbz, cover_path=None):
     """
     Extracts images from cbz_files, renames them sequentially, and writes to output_cbz.
     """
@@ -51,6 +52,10 @@ def process_cbz_images(cbz_files, output_cbz):
         with zipfile.ZipFile(cbz, "r") as z:
             total_images += len(sorted_images(z))
 
+    # Add cover to total if present
+    if cover_path:
+        total_images += 1
+
     # 2. Dynamic padding (at least 3 digits)
     padding = max(3, len(str(total_images)))
 
@@ -59,6 +64,13 @@ def process_cbz_images(cbz_files, output_cbz):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             page_counter = 1
+
+            # Add cover as first page if present
+            if cover_path and cover_path.exists():
+                cover_ext = cover_path.suffix.lower()
+                cover_dest = tmp_path / f"{0:0{padding}d}{cover_ext}"
+                shutil.copy2(cover_path, cover_dest)
+                pbar.update(1)
 
             # Extract and rename images
             for cbz in cbz_files:
@@ -103,7 +115,7 @@ def rename_cbz_images(input_path, output_path, postfix=""):
     print("🎉 Done")
 
 
-def regroup_cbz(input_path, output_path, series_name, tomes, postfix=""):
+def regroup_cbz(input_path, output_path, series_name, tomes, covers_path, postfix=""):
     """Regroup CBZ files by chapters into tomes. Only works with directories."""
     if input_path.is_file():
         print("Error: Regroup mode (--series) only works with directories, not single files.", file=sys.stderr)
@@ -112,12 +124,30 @@ def regroup_cbz(input_path, output_path, series_name, tomes, postfix=""):
     output_path.mkdir(exist_ok=True)
     chapters = {extract_chapter_number(cbz.name): cbz for cbz in input_path.glob("*.cbz")}
 
+    # Calculate dynamic padding based on the maximum tome number
+    max_tome = max(tomes.keys())
+    tome_padding = len(str(max_tome))
+
     for tome, (start, end) in tomes.items():
         print(f"📘 Creating Tome {tome} ({start} → {end})")
-        imgs_cbz = [chapters[chap] for chap in range(start, end + 1) if chap in chapters]
-        out_name = f"{series_name} - Tome {tome:02d}{postfix}.cbz"
+        cover_path = covers_path.get(tome, None)
+
+        # Check for missing chapters and collect available ones
+        imgs_cbz = []
+        missing_chapters = []
+        for chap in range(start, end + 1):
+            if chap in chapters:
+                imgs_cbz.append(chapters[chap])
+            else:
+                missing_chapters.append(chap)
+
+        # Display warning if chapters are missing
+        if missing_chapters:
+            print(f"⚠️  Warning: Missing chapters for Tome {tome}: {', '.join(map(str, missing_chapters))}", file=sys.stderr)
+
+        out_name = f"{series_name} - Tome {tome:0{tome_padding}d}{postfix}.cbz"
         output_cbz = output_path / out_name
-        process_cbz_images(imgs_cbz, output_cbz)
+        process_cbz_images(imgs_cbz, output_cbz, cover_path)
         print(f"✅ Tome {tome} created: {output_cbz}")
 
     print("🎉 Done")
@@ -128,7 +158,7 @@ def main():
     parser.add_argument("--input", type=str, required=True, help="Input CBZ file or directory containing CBZ files")
     parser.add_argument("--output", type=str, required=True, help="Output CBZ file or directory for processed CBZ files")
     parser.add_argument("--series", type=str, help="Series name (for regrouping mode)")
-    parser.add_argument("--tomes", type=str, help="JSON file with tome structure (for regrouping mode)")
+    parser.add_argument("--infos", type=str, help="JSON file with information structure (for regrouping mode)")
     parser.add_argument("--postfix", type=str, default="", help="Postfix to append to output filenames in directory mode (optional)")
     args = parser.parse_args()
     input_path = Path(args.input)
@@ -140,11 +170,14 @@ def main():
         print(f"Error: Input path does not exist: {input_path}", file=sys.stderr)
         exit(1)
 
-    if args.series and args.tomes:
-        with open(args.tomes, "r", encoding="utf-8") as f:
-            tomes = json.load(f)
-        tomes = {int(k): tuple(v) for k, v in tomes.items()}
-        regroup_cbz(input_path, output_path, args.series, tomes, postfix)
+    if args.series and args.infos:
+        with open(args.infos, "r", encoding="utf-8") as f:
+            infos = json.load(f)
+        # Extract chapters range from the new JSON structure
+        tomes = {int(k): tuple(v["chapters"]) for k, v in infos["tomes"].items()}
+        # Cover is optional, only add if present
+        covers_path = {int(k): Path(v["cover"]) for k, v in infos["tomes"].items() if "cover" in v and v["cover"]}
+        regroup_cbz(input_path, output_path, args.series, tomes, covers_path, postfix)
     else:
         rename_cbz_images(input_path, output_path, postfix)
 

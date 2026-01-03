@@ -68,56 +68,59 @@ python main.py --input path/to/input --output path/to/output
 
 ### 2. Regroup chapters into volumes
 
-Prepare a JSON file describing the volume structure, for example:
+Prepare a JSON file describing the series and volume structure, for example:
 
 ```json
 {
-  "1": [1, 3],
-  "2": [4, 7],
-  "3": [8, 11],
-  "4": [12, 15],
-  "5": [16, 19],
-  "6": [20, 23],
-  "7": [24, 27],
-  "8": [28, 31],
-  "9": [32, 35],
-  "10": [36, 39],
-  "11": [40, 43],
-  "12": [44, 47],
-  "13": [48, 51],
-  "14": [52, 55],
-  "15": [60, 63],
-  "16": [64, 67],
-  "17": [68, 71],
-  "18": [72, 75],
-  "19": [76, 80]
+  "tomes": {
+    "1": {
+      "cover": "D:\\path\\to\\cover.jpg",
+      "chapters": [1, 4]
+    },
+    "2": {
+      "chapters": [5, 8]
+    },
+    "3": {
+      "cover": "D:\\path\\to\\cover2.jpg",
+      "chapters": [9, 12]
+    }
+  }
 }
 ```
 
 If installed globally with `uv tool install`:
 
 ```sh
-cbz-convertor --input path/to/input --output path/to/output --series "Boruto - Naruto Next Generations" --tomes path/to/tomes.json
+cbz-convertor --input path/to/input --output path/to/output --series "Series Name" --infos path/to/infos.json
 ```
 
 If using development mode (`uv sync`):
 
 ```sh
-uv run cbz-convertor --input path/to/input --output path/to/output --series "Boruto - Naruto Next Generations" --tomes path/to/tomes.json
+uv run cbz-convertor --input path/to/input --output path/to/output --series "Series Name" --infos path/to/infos.json
 ```
 
 Or with Python directly:
 
 ```sh
-python main.py --input path/to/input --output path/to/output --series "Boruto - Naruto Next Generations" --tomes path/to/tomes.json
+python main.py --input path/to/input --output path/to/output --series "Series Name" --infos path/to/infos.json
 ```
 
 **Arguments:**
 - `--series`: Series name (used for naming volumes)
-- `--tomes`: Path to the JSON file describing the volume structure
+- `--infos`: Path to the JSON file describing series information and volume structure
 - `--postfix`: (Optional) Suffix to add to output filenames
+- `--verbose`: (Optional) Enable detailed output with chapter ranges for each tome
 
-If both `--series` and `--tomes` are provided, the tool will regroup chapters into volumes. Otherwise, it will only rename images inside each CBZ.
+**JSON Structure:**
+- `series`: (Object) Optional metadata about the series
+- `tomes`: (Object) Volume definitions where:
+  - Each key is the volume number (e.g., "1", "2", "3")
+  - `chapters`: [start, end] - Chapter range to include in this volume (required)
+  - `cover`: Path to cover image file (optional)
+  - `title`, `summary`, `year`: Metadata fields (optional)
+
+If both `--series` and `--infos` are provided, the tool will regroup chapters into volumes. Otherwise, it will only rename images inside each CBZ.
 
 ## Supported Chapter Filename Formats
 
@@ -131,10 +134,23 @@ The tool automatically extracts chapter numbers from these formats:
 
 ## How it works
 
-- Files are processed in a temporary directory and cleaned up after processing.
+### Image Processing
+- Files are processed in a temporary directory and cleaned up after processing
 - Images are renamed as `001.jpg`, `002.jpg`, etc. with automatic zero-padding
-- In regroup mode, chapters are merged into volumes according to the provided structure.
-- Images are sorted numerically first, then alphabetically
+- Padding is dynamically calculated based on total image count
+- Images are sorted numerically first (by filename stem), then alphabetically
+
+### Volume Regrouping
+- Multiple chapters are merged into volumes according to the JSON structure
+- Chapters within a volume are processed in sequential order
+- If a cover image is specified, it's added as the first page of the volume
+- Missing chapters are reported as warnings but don't stop processing
+- Volume numbers are zero-padded to match the maximum tome count (e.g., "01", "001")
+
+### Output
+- Processed CBZ files are created with proper compression
+- In rename mode: original filenames are preserved (or postfix is added)
+- In regroup mode: volumes are named as "{Series Name} - Tome {XX}{postfix}.cbz"
 
 ## Build
 
