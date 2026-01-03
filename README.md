@@ -10,6 +10,16 @@ A Python utility to process CBZ (comic book archive) files for e-readers. Rename
 - 📊 Progress tracking with tqdm
 - 🧹 Automatic temporary file cleanup
 
+## Version
+
+Check the current version:
+
+```sh
+cbz-convertor --version
+```
+
+This project uses [Versioneer](https://github.com/python-versioneer/python-versioneer) for automatic version management from Git tags. See [VERSIONING.md](VERSIONING.md) for details on how to create new releases.
+
 ## Installation
 
 Dependencies are defined in `pyproject.toml`. You can install this project with any Python package manager.
@@ -56,11 +66,6 @@ If using development mode (`uv sync`):
 uv run cbz-convertor --input path/to/input --output path/to/output
 ```
 
-Or with Python directly:
-
-```sh
-python main.py --input path/to/input --output path/to/output
-```
 
 **Arguments:**
 - `--input`: File or folder containing the CBZ files to process
@@ -100,11 +105,6 @@ If using development mode (`uv sync`):
 uv run cbz-convertor --input path/to/input --output path/to/output --series "Series Name" --infos path/to/infos.json
 ```
 
-Or with Python directly:
-
-```sh
-python main.py --input path/to/input --output path/to/output --series "Series Name" --infos path/to/infos.json
-```
 
 **Arguments:**
 - `--series`: Series name (used for naming volumes)
