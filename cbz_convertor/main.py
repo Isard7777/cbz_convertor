@@ -7,6 +7,7 @@ import json
 import sys
 import shutil
 from tqdm import tqdm
+from . import __version__
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
@@ -155,6 +156,7 @@ def regroup_cbz(input_path, output_path, series_name, tomes, covers_path, postfi
 
 def main():
     parser = argparse.ArgumentParser(description="CBZ Convertor: regroup chapters or rename images for e-readers.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--input", type=str, required=True, help="Input CBZ file or directory containing CBZ files")
     parser.add_argument("--output", type=str, required=True, help="Output CBZ file or directory for processed CBZ files")
     parser.add_argument("--series", type=str, help="Series name (for regrouping mode)")
