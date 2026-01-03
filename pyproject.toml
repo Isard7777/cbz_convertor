@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=64", "versioneer[toml]"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "cbz_convertor"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A tool to regroup and rename CBZ files for e-readers."
 authors = [
     { name = "Pierre Perick", email = "pierre.perick@gmail.com" }
@@ -13,4 +17,16 @@ dependencies = [
 ]
 
 [project.scripts]
-cbz-convertor = "main:main"
+cbz-convertor = "cbz_convertor.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cbz_convertor*"]
+
+[tool.versioneer]
+VCS = "git"
+style = "pep440"
+versionfile_source = "cbz_convertor/_version.py"
+versionfile_build = "cbz_convertor/_version.py"
+tag_prefix = "v"
+parentdir_prefix = "cbz_convertor-"
