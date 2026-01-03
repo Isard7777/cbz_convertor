@@ -79,14 +79,14 @@ Prepare a JSON file describing the series and volume structure, for example:
 {
   "tomes": {
     "1": {
-      "cover": "D:\\path\\to\\cover.jpg",
+      "cover": "/path/to/cover.jpg",
       "chapters": [1, 4]
     },
     "2": {
       "chapters": [5, 8]
     },
     "3": {
-      "cover": "D:\\path\\to\\cover2.jpg",
+      "cover": "/path/to/cover2.jpg",
       "chapters": [9, 12]
     }
   }
