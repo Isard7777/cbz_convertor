@@ -14,10 +14,24 @@ A Python utility to process CBZ (comic book archive) files for e-readers. Rename
 
 Dependencies are defined in `pyproject.toml`. You can install this project with any Python package manager.
 
-### With uv (recommended)
+### With uv (recommended - global installation)
+
+```sh
+uv tool install .
+```
+
+This installs `cbz-convertor` as a global command and manages its dependencies automatically.
+
+### With uv (development mode)
 
 ```sh
 uv sync
+```
+
+Then run with:
+
+```sh
+uv run cbz-convertor
 ```
 
 ### With pip
@@ -29,6 +43,14 @@ pip install -e .
 ## Usage
 
 ### 1. Rename images inside each CBZ
+
+If installed globally with `uv tool install`:
+
+```sh
+cbz-convertor --input path/to/input --output path/to/output
+```
+
+If using development mode (`uv sync`):
 
 ```sh
 uv run cbz-convertor --input path/to/input --output path/to/output
@@ -72,7 +94,13 @@ Prepare a JSON file describing the volume structure, for example:
 }
 ```
 
-Run the command:
+If installed globally with `uv tool install`:
+
+```sh
+cbz-convertor --input path/to/input --output path/to/output --series "Boruto - Naruto Next Generations" --tomes path/to/tomes.json
+```
+
+If using development mode (`uv sync`):
 
 ```sh
 uv run cbz-convertor --input path/to/input --output path/to/output --series "Boruto - Naruto Next Generations" --tomes path/to/tomes.json
