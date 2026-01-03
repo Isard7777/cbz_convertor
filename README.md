@@ -1,13 +1,29 @@
 # CBZ Convertor
 
-Python tool to regroup CBZ chapters into volumes or rename images inside each CBZ for better compatibility with e-readers (e.g., Kobo).
+A Python utility to process CBZ (comic book archive) files for e-readers. Renames images sequentially with zero-padded filenames and can regroup multiple chapter files into volume files based on JSON configuration.
+
+## Features
+
+- ✨ Sequential image renaming with automatic zero-padding
+- 📚 Chapter-to-volume regrouping with JSON structure definition
+- 🔍 Automatic chapter number extraction from various filename formats
+- 📊 Progress tracking with tqdm
+- 🧹 Automatic temporary file cleanup
 
 ## Installation
 
-This project uses [uv](https://github.com/astral-sh/uv) for dependency management and execution. You can also use Python directly.
+Dependencies are defined in `pyproject.toml`. You can install this project with any Python package manager.
+
+### With uv (recommended)
 
 ```sh
-uv pip install -e .
+uv sync
+```
+
+### With pip
+
+```sh
+pip install -e .
 ```
 
 ## Usage
@@ -18,8 +34,15 @@ uv pip install -e .
 uv run cbz-convertor --input path/to/input --output path/to/output
 ```
 
-- `--input`: folder containing the CBZ files to process
-- `--output`: folder where the processed CBZ files will be saved
+Or with Python directly:
+
+```sh
+python main.py --input path/to/input --output path/to/output
+```
+
+**Arguments:**
+- `--input`: File or folder containing the CBZ files to process
+- `--output`: File or folder where the processed CBZ files will be saved
 
 ### 2. Regroup chapters into volumes
 
@@ -55,20 +78,41 @@ Run the command:
 uv run cbz-convertor --input path/to/input --output path/to/output --series "Boruto - Naruto Next Generations" --tomes path/to/tomes.json
 ```
 
-- `--series`: series name (used for naming volumes)
-- `--tomes`: path to the JSON file describing the volume structure
+Or with Python directly:
+
+```sh
+python main.py --input path/to/input --output path/to/output --series "Boruto - Naruto Next Generations" --tomes path/to/tomes.json
+```
+
+**Arguments:**
+- `--series`: Series name (used for naming volumes)
+- `--tomes`: Path to the JSON file describing the volume structure
+- `--postfix`: (Optional) Suffix to add to output filenames
 
 If both `--series` and `--tomes` are provided, the tool will regroup chapters into volumes. Otherwise, it will only rename images inside each CBZ.
+
+## Supported Chapter Filename Formats
+
+The tool automatically extracts chapter numbers from these formats:
+
+- `Series - 19.cbz`
+- `Series chapitre 1.cbz`
+- `Series chapter 1.cbz`
+- `Series ch. 1.cbz` or `Series ch 1.cbz`
+- `Series-1.cbz` or `Series 1.cbz`
 
 ## How it works
 
 - Files are processed in a temporary directory and cleaned up after processing.
-- Images are renamed as `001.jpg`, `002.jpg`, etc.
+- Images are renamed as `001.jpg`, `002.jpg`, etc. with automatic zero-padding
 - In regroup mode, chapters are merged into volumes according to the provided structure.
+- Images are sorted numerically first, then alphabetically
 
-## Create an executable (optional)
+## Build
 
-To create a Windows executable with [PyInstaller](https://pyinstaller.org/):
+### Create an executable (optional)
+
+#### With PyInstaller
 
 ```sh
 pip install pyinstaller
@@ -76,6 +120,14 @@ pyinstaller --onefile main.py --name cbz-convertor
 ```
 
 The executable will be available in the `dist/` folder.
+
+#### With Python build tools
+
+```sh
+python -m build
+```
+
+This creates a wheel package in the `dist/` folder.
 
 ## License
 
