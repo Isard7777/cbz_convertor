@@ -28,7 +28,7 @@ VCS = "git"
 style = "pep440"
 versionfile_source = "cbz_convertor/_version.py"
 versionfile_build = "cbz_convertor/_version.py"
-tag_prefix = "v"
+tag_prefix = ""
 parentdir_prefix = "cbz_convertor-"
 
 [tool.towncrier]
