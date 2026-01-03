@@ -41,83 +41,85 @@ def sorted_images(zip_file: zipfile.ZipFile):
     return sorted(images, key=sort_key)
 
 
-def process_cbz_images(cbz_files, output_cbz, image_names=None, start_index=1):
+def process_cbz_images(cbz_files, output_cbz):
     """
-    Extracts images from cbz_files, renames them in order, and writes to output_cbz.
-    If image_names is provided, only those images are processed (in order).
-    start_index: starting index for image numbering.
+    Extracts images from cbz_files, renames them sequentially, and writes to output_cbz.
     """
-    # 1. Compter le nombre total d'images à traiter
+    # 1. Count the total images to process
     total_images = 0
-    if image_names:
-        total_images = len(image_names) * len(cbz_files)
-    else:
-        for cbz in cbz_files:
-            with zipfile.ZipFile(cbz, "r") as z:
-                total_images += len(sorted_images(z))
-    # 2. Calcul du padding dynamique
-    padding = max(3, len(str(start_index + total_images - 1)))
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        page_counter = start_index
-        with tqdm(total=total_images, desc=f"Extracting {output_cbz.name}", unit="img") as pbar:
+    for cbz in cbz_files:
+        with zipfile.ZipFile(cbz, "r") as z:
+            total_images += len(sorted_images(z))
+
+    # 2. Dynamic padding (at least 3 digits)
+    padding = max(3, len(str(total_images)))
+
+    # 3. Single progress bar for both extraction and writing (total = extract + write)
+    with tqdm(total=total_images * 2, desc=f"Processing {output_cbz.name}", unit="") as pbar:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            page_counter = 1
+
+            # Extract and rename images
             for cbz in cbz_files:
                 with zipfile.ZipFile(cbz, "r") as z:
-                    imgs = image_names if image_names else sorted_images(z)
-                    for img_name in imgs:
+                    for img_name in sorted_images(z):
                         ext = Path(img_name).suffix.lower()
                         new_name = f"{page_counter:0{padding}d}{ext}"
                         z.extract(img_name, tmp_path)
                         (tmp_path / img_name).rename(tmp_path / new_name)
                         page_counter += 1
                         pbar.update(1)
-        # Phase d'écriture dans le zip
-        images_to_write = sorted(tmp_path.glob("*"))
-        with tqdm(total=len(images_to_write), desc=f"Writing {output_cbz.name}", unit="img") as pbar_write:
+
+            # Write to output zip
+            images_to_write = sorted(tmp_path.glob("*"))
             with zipfile.ZipFile(output_cbz, "w", compression=zipfile.ZIP_DEFLATED) as out_zip:
                 for img in images_to_write:
                     out_zip.write(img, img.name)
-                    pbar_write.update(1)
+                    pbar.update(1)
 
 
 def rename_cbz_images(input_path, output_path, postfix=""):
+    """Rename images in CBZ file(s). Works with single files or directories."""
+    # Collect CBZ files and their output paths
+    cbz_files_to_process = []
+
     if input_path.is_file():
         output_path.parent.mkdir(exist_ok=True)
-        cbz = input_path
-        print(f"Renaming images in {cbz.name}")
-        process_cbz_images([cbz], output_path)
-        print(f"✅ {cbz.name} processed: {output_path}")
+        cbz_files_to_process.append((input_path, output_path))
     else:
         output_path.mkdir(exist_ok=True)
         for cbz in input_path.glob("*.cbz"):
-            print(f"Renaming images in {cbz.name}")
             out_name = cbz.stem + postfix + ".cbz"
             output_cbz = output_path / out_name
-            process_cbz_images([cbz], output_cbz)
-            print(f"✅ {cbz.name} processed: {output_cbz}")
+            cbz_files_to_process.append((cbz, output_cbz))
+
+    # Process all files
+    for cbz, output_cbz in cbz_files_to_process:
+        print(f"Renaming images in {cbz.name}")
+        process_cbz_images([cbz], output_cbz)
+        print(f"✅ {cbz.name} processed: {output_cbz}")
+
     print("🎉 Done")
 
 
 def regroup_cbz(input_path, output_path, series_name, tomes, postfix=""):
+    """Regroup CBZ files by chapters into tomes. Only works with directories."""
     if input_path.is_file():
-        output_path.parent.mkdir(exist_ok=True)
-        cbz_files = [input_path]
-        tome, (start, end) = next(iter(tomes.items()))
-        chapters = {extract_chapter_number(cbz.name): cbz for cbz in cbz_files}
+        print("Error: Regroup mode (--series) only works with directories, not single files.", file=sys.stderr)
+        exit(1)
+
+    output_path.mkdir(exist_ok=True)
+    chapters = {extract_chapter_number(cbz.name): cbz for cbz in input_path.glob("*.cbz")}
+
+    for tome, (start, end) in tomes.items():
         print(f"📘 Creating Tome {tome} ({start} → {end})")
         imgs_cbz = [chapters[chap] for chap in range(start, end + 1) if chap in chapters]
-        process_cbz_images(imgs_cbz, output_path)
-        print(f"✅ Tome {tome} created: {output_path}")
-    else:
-        output_path.mkdir(exist_ok=True)
-        chapters = {extract_chapter_number(cbz.name): cbz for cbz in input_path.glob("*.cbz")}
-        for tome, (start, end) in tomes.items():
-            print(f"📘 Creating Tome {tome} ({start} → {end})")
-            imgs_cbz = [chapters[chap] for chap in range(start, end + 1) if chap in chapters]
-            out_name = f"{series_name} - Tome {tome:02d}{postfix}.cbz"
-            output_cbz = output_path / out_name
-            process_cbz_images(imgs_cbz, output_cbz)
-            print(f"✅ Tome {tome} created: {output_cbz}")
+        out_name = f"{series_name} - Tome {tome:02d}{postfix}.cbz"
+        output_cbz = output_path / out_name
+        process_cbz_images(imgs_cbz, output_cbz)
+        print(f"✅ Tome {tome} created: {output_cbz}")
+
     print("🎉 Done")
 
 
@@ -132,13 +134,12 @@ def main():
     input_path = Path(args.input)
     output_path = Path(args.output)
     postfix = args.postfix
-    # Enforce file/directory logic
-    if input_path.is_file() and not output_path.suffix == ".cbz":
-        print("If input is a file, output must be a .cbz file.", file=sys.stderr)
+
+    # Validate input path exists
+    if not input_path.exists():
+        print(f"Error: Input path does not exist: {input_path}", file=sys.stderr)
         exit(1)
-    if input_path.is_dir() and output_path.exists() and not output_path.is_dir():
-        print("If input is a directory, output must be a directory.", file=sys.stderr)
-        exit(1)
+
     if args.series and args.tomes:
         with open(args.tomes, "r", encoding="utf-8") as f:
             tomes = json.load(f)
