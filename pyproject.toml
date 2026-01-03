@@ -30,3 +30,20 @@ versionfile_source = "cbz_convertor/_version.py"
 versionfile_build = "cbz_convertor/_version.py"
 tag_prefix = "v"
 parentdir_prefix = "cbz_convertor-"
+
+[tool.towncrier]
+directory = "unreleased_changelog"
+filename = "CHANGELOG.md"
+template = "unreleased_changelog/_template.md"
+title_format = "## [{version}]"
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fix"
+name = "Bugfixes"
+showcontent = true
+

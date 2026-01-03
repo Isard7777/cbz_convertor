@@ -18,7 +18,9 @@ Check the current version:
 cbz-convertor --version
 ```
 
-This project uses [Versioneer](https://github.com/python-versioneer/python-versioneer) for automatic version management from Git tags. See [VERSIONING.md](VERSIONING.md) for details on how to create new releases.
+This project uses [Versioneer](https://github.com/python-versioneer/python-versioneer) for automatic version management from Git tags, and [Towncrier](https://towncrier.readthedocs.io/) for changelog management.
+
+See [VERSIONING.md](VERSIONING.md) for details on how to create new releases and [CHANGELOG.md](CHANGELOG.md) for the release history.
 
 ## Installation
 

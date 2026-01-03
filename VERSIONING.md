@@ -21,33 +21,78 @@ Versioneer automatically generates version numbers based on:
 
 ## Creating a new version
 
-### 1. Make your changes and commits
+### 1. Add changelog fragments
+
+For each change you make, create a fragment file in `unreleased_changelog/` with the format:
+
+```
+<number>.<type>.md
+```
+
+Where `<type>` is either `feature` or `fix`.
+
+**For a new feature:**
+```bash
+echo "Your feature description" > unreleased_changelog/001.feature.md
+```
+
+**For a bug fix:**
+```bash
+echo "Your fix description" > unreleased_changelog/002.fix.md
+```
+
+Fragments should be:
+- Plain text files with `.md` extension
+- Named with a unique number (PR/issue number, timestamp, etc.)
+- Using the correct type suffix: `.feature.md` or `.fix.md`
+- One line describing the change in past tense
+
+Example structure:
+```
+unreleased_changelog/
+├── 001.feature.md  → "Added support for WebP images"
+├── 002.feature.md  → "Improved error messages"
+├── 003.fix.md      → "Fixed crash with special characters"
+└── 004.fix.md      → "Fixed memory leak in image processing"
+```
+
+### 2. Make your changes and commits
 
 ```bash
 git add .
-git commit -m "Your changes"
+git commit -m "Your changes with fragment"
 ```
 
-### 2. Create a tag for the new version
+### 3. Generate the changelog (before releasing)
+
+Before creating the tag, generate the changelog to update `CHANGELOG.md`:
 
 ```bash
-# For a minor version (0.1.0 -> 0.2.0)
+# Build the changelog from fragments
+towncrier build --version 0.2.0
+```
+
+This will:
+- Read all fragments from `unreleased_changelog/`
+- Generate a new section in `CHANGELOG.md` with the version
+- Delete the fragment files automatically
+- Create a backup: `CHANGELOG.md.bak`
+
+### 4. Commit the updated changelog
+
+```bash
+git add CHANGELOG.md
+git commit -m "Release version 0.2.0"
+```
+
+### 5. Create and push the tag
+
+```bash
 git tag v0.2.0
-
-# For a patch version (0.1.0 -> 0.1.1)
-git tag v0.1.1
-
-# For a major version (0.1.0 -> 1.0.0)
-git tag v1.0.0
-```
-
-### 3. Push tags to remote
-
-```bash
 git push origin --tags
 ```
 
-### 4. Reinstall the tool
+### 6. Reinstall the tool
 
 ```bash
 uv tool install --reinstall --force .
@@ -94,22 +139,85 @@ parentdir_prefix = "cbz_convertor-"
 ## Example workflow
 
 ```bash
-# Development in progress
-git commit -m "Add new feature"
-# Version: 0.1.0+1.g1c17761
+# Development in progress - Add feature
+echo "Added WebP image support" > unreleased_changelog/001.feature.md
+git add unreleased_changelog/001.feature.md
+git commit -m "Add feature: WebP support"
 
-git commit -m "Fix bug"
-# Version: 0.1.0+2.g2d28872
+# Add bugfix
+echo "Fixed crash with special filenames" > unreleased_changelog/002.fix.md
+git add unreleased_changelog/002.fix.md
+git commit -m "Add bugfix: special character handling"
 
 # Ready for release
+towncrier build --version 0.2.0
+git add CHANGELOG.md
+git commit -m "Release version 0.2.0"
 git tag v0.2.0
 git push origin --tags
-# Version: 0.2.0
 
 # Continue development
 git commit -m "Start new feature"
 # Version: 0.2.0+1.g3e39983
 ```
+
+## Managing changelog fragments
+
+### Adding a fragment
+
+Create a file in `unreleased_changelog/` with format: `<number>.<type>.md`
+
+```bash
+# Feature
+echo "Description of the feature" > unreleased_changelog/001.feature.md
+
+# Bugfix
+echo "Description of the bugfix" > unreleased_changelog/002.fix.md
+```
+
+### Fragment file names
+
+Use any unique identifier:
+- Pull request number: `001.feature.md`, `002.fix.md`
+- Issue number: `issue-123.feature.md`, `issue-124.fix.md`
+- Timestamp: `2026-01-04-001.feature.md`
+- Descriptive: `add-webp-support.feature.md`, `fix-memory-leak.fix.md`
+
+### Viewing pending changes
+
+List all unreleased changes:
+
+```bash
+ls unreleased_changelog/*.feature.md
+ls unreleased_changelog/*.fix.md
+```
+
+## Towncrier configuration
+
+Configuration is in `pyproject.toml`:
+
+```toml
+[tool.towncrier]
+directory = "unreleased_changelog"
+filename = "CHANGELOG.md"
+template = "unreleased_changelog/_template.md"
+title_format = "## [{version}]"
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fix"
+name = "Bugfixes"
+showcontent = true
+```
+
+- `directory`: Where fragments are stored
+- `filename`: The changelog file to update
+- `template`: Custom Markdown template for formatting
+- `type`: Supported fragment types with their display names
 
 ## Troubleshooting
 
