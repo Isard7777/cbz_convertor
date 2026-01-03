@@ -1,0 +1,16 @@
+[project]
+name = "cbz_convertor"
+version = "0.1.0"
+description = "A tool to regroup and rename CBZ files for e-readers."
+authors = [
+    { name = "Pierre Perick", email = "pierre.perick@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "argparse; python_version<'3.10'",
+    "tqdm"
+]
+
+[project.scripts]
+cbz-convertor = "main:main"
