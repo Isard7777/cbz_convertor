@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cbz-convertor = "cbz_convertor.main:main"
+cbz-convertor = "cbz_convertor.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
