@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .core import extract_chapter_number, process_cbz_images
 from .exceptions import CBZProcessingError, ChapterExtractionError, InvalidJSONError
+from .utils import get_nested_value
 
 
 def rename_cbz_images(input_path, output_path, postfix=""):
@@ -52,14 +53,14 @@ def rename_cbz_images(input_path, output_path, postfix=""):
         raise CBZProcessingError(f"Unexpected error during rename operation: {e}")
 
 
-def regroup_cbz(input_path, output_path, series_name, infos, postfix=""):
+def regroup_cbz(input_path, output_path, filenames, infos, postfix=""):
     """
     Regroup CBZ files by chapters into tomes. Only works with directories.
 
     Args:
         input_path: Directory containing CBZ files
         output_path: Output directory for regrouped tomes
-        series_name: Name of the series
+        filenames: Name of the series
         infos: Dictionary with tomes configuration from JSON
         postfix: Optional postfix to append to output filenames
 
@@ -146,6 +147,33 @@ def regroup_cbz(input_path, output_path, series_name, infos, postfix=""):
                 else:
                     covers[tome_num] = cover_path
 
+        # Extract optional series metadata from JSON
+        metadata = {"Series": get_nested_value(infos, "series", "title"),
+                    "LanguageISO": get_nested_value(infos, "series", "language"),
+                    "Writer": get_nested_value(infos, "series", "writers"),
+                    "Penciller": get_nested_value(infos, "series", "pencillers"),
+                    "Publisher": get_nested_value(infos, "series", "publishers"),
+                    "Genre": get_nested_value(infos, "series", "genres")}
+
+        translators = get_nested_value(infos, "series", "translators")
+        tags = get_nested_value(infos, "series", "tags")
+
+        existing_notes = get_nested_value(infos, "series", "notes")
+
+        # Ensure translators and tags are lists
+        if translators and not isinstance(translators, list):
+            translators = [translators]
+        if tags and not isinstance(tags, list):
+            tags = [tags]
+
+        if translators:
+            existing_notes = f"{existing_notes}\nTranslated by {','.join(translators)}." if existing_notes else f"Translated by {','.join(translators)}."
+        if tags:
+            existing_notes = f"{existing_notes}\nTags: {','.join(tags)}." if existing_notes else f"Tags: {','.join(tags)}."
+
+        metadata["Notes"] = existing_notes
+
+
         # Calculate padding for consistent tome numbering
         max_tome = max(tomes.keys())
         tome_padding = len(str(max_tome))
@@ -153,6 +181,11 @@ def regroup_cbz(input_path, output_path, series_name, infos, postfix=""):
         # Process each tome
         for tome_num, (start, end) in tomes.items():
             print(f"📘 Creating Tome {tome_num} ({start} → {end})")
+            metadata["Volume"] = str(tome_num)
+            metadata["Number"] = str(tome_num)
+            metadata["Title"] = get_nested_value(infos, f"tomes", f"{tome_num}" "title")
+            metadata["Year"] = get_nested_value(infos, f"tomes", f"{tome_num}" "year")
+            metadata["Summary"] = get_nested_value(infos, f"tomes", f"{tome_num}" "summary")
             cover_path = covers.get(tome_num, None)
 
             # Collect chapters for this tome and track missing ones
@@ -172,11 +205,11 @@ def regroup_cbz(input_path, output_path, series_name, infos, postfix=""):
                 )
 
             # Create output tome
-            out_name = f"{series_name} - Tome {tome_num:0{tome_padding}d}{postfix}.cbz"
+            out_name = f"{filenames} - Tome {tome_num:0{tome_padding}d}{postfix}.cbz"
             output_cbz = output_path / out_name
 
             try:
-                process_cbz_images(imgs_cbz, output_cbz, cover_path)
+                process_cbz_images(imgs_cbz, output_cbz, cover_path, metadata)
                 print(f"✅ Tome {tome_num} created: {output_cbz}")
             except CBZProcessingError as e:
                 print(f"❌ Failed to create Tome {tome_num}: {e}", file=sys.stderr)

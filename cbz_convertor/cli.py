@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--input", type=str, required=True, help="Input CBZ file or directory containing CBZ files")
     parser.add_argument("--output", type=str, required=True, help="Output CBZ file or directory for processed CBZ files")
-    parser.add_argument("--series", type=str, help="Series name (required for regrouping mode)")
+    parser.add_argument("--filenames", type=str, help="Filenames to use to produce files (required for regrouping mode)")
     parser.add_argument("--infos", type=str, help="JSON file with tomes configuration (required for regrouping mode)")
     parser.add_argument("--postfix", type=str, default="", help="Postfix to append to output filenames (optional)")
 
@@ -39,10 +39,10 @@ def main():
             raise CBZProcessingError(f"Input path does not exist: {input_path}")
 
         # Check if regrouping mode is requested
-        if args.series and args.infos:
-            _run_regroup_mode(input_path, output_path, args.series, args.infos, postfix)
+        if args.filenames and args.infos:
+            _run_regroup_mode(input_path, output_path, args.filenames, args.infos, postfix)
         else:
-            _validate_mode_arguments(args.series, args.infos)
+            _validate_mode_arguments(args.filenames, args.infos)
             _run_rename_mode(input_path, output_path, postfix)
 
     except (CBZConvertorError, InvalidJSONError, CBZProcessingError) as e:
@@ -104,18 +104,18 @@ def _run_rename_mode(input_path: Path, output_path: Path, postfix: str):
     rename_cbz_images(input_path, output_path, postfix)
 
 
-def _validate_mode_arguments(series: str | None, infos: str | None):
+def _validate_mode_arguments(filename: str | None, infos: str | None):
     """
     Validate that mode arguments are consistent.
 
     Args:
-        series: Series name argument
+        filename: filename argument
         infos: Infos file argument
 
     Raises:
         CBZProcessingError: If arguments are inconsistent
     """
-    if series or infos:
+    if filename or infos:
         raise CBZProcessingError(
             "Both --series and --infos must be provided together for regrouping mode. "
             "Omit both for simple rename mode."

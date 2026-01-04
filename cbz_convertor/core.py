@@ -11,6 +11,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from .exceptions import CBZProcessingError, ChapterExtractionError
+from .utils import generate_comic_info_xml
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
@@ -82,7 +83,7 @@ def sorted_images(zip_file: zipfile.ZipFile):
     return sorted(images, key=sort_key)
 
 
-def process_cbz_images(cbz_files, output_cbz, cover_path=None):
+def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None):
     """
     Extracts images from CBZ files, renames them sequentially, and writes to output CBZ.
 
@@ -124,11 +125,20 @@ def process_cbz_images(cbz_files, output_cbz, cover_path=None):
         # Dynamic padding (at least 3 digits)
         padding = max(3, len(str(total_images)))
 
+        metadata["PageCount"] = str(total_images)
+
+        comic_info_str = generate_comic_info_xml(metadata)
+
+
         # Process with progress bar
-        with tqdm(total=total_images * 2, desc=f"Processing {output_cbz.name}", unit="") as pbar:
+        with tqdm(total=total_images * 2 + 1, desc=f"Processing {output_cbz.name}", unit="", bar_format="{desc}: {percentage:3.0f}%|{bar}| [{elapsed}<{remaining}]") as pbar:
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)
                 page_counter = 1
+
+                comicinfo_path = tmp_path / "ComicInfo.xml"
+                comicinfo_path.write_text(comic_info_str, encoding="utf-8", newline="\n")
+                pbar.update(1)
 
                 # Add cover as first page if present
                 if cover_path and cover_path.exists():
