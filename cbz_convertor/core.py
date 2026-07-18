@@ -8,12 +8,28 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+from PIL import Image
 from tqdm import tqdm
 
 from .exceptions import CBZProcessingError, ChapterExtractionError
-from .utils import generate_comic_info_xml
+from .metadata import Metadata
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
+KEEP_FORMAT_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def _convert_to_jpg(source_path: Path, target_path: Path) -> None:
+    try:
+        with Image.open(source_path) as img:
+            if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                alpha = img.convert("RGBA")
+                background = Image.new("RGB", alpha.size, (255, 255, 255))
+                background.paste(alpha, mask=alpha.split()[-1])
+                background.save(target_path, format="JPEG", quality=95)
+            else:
+                img.convert("RGB").save(target_path, format="JPEG", quality=95)
+    except Exception as e:
+        raise CBZProcessingError(f"Failed to convert image to JPG ({source_path.name}): {e}")
 
 
 def extract_chapter_number(filename: str) -> int:
@@ -48,11 +64,60 @@ def extract_chapter_number(filename: str) -> int:
     )
 
 
+def _extract_number_from_string(text: str) -> tuple:
+    """
+    Extract numbers and text parts from a string for natural sorting.
+
+    Args:
+        text: The string to parse
+
+    Returns:
+        Tuple of (int, str) parts for sorting
+    """
+    parts = re.findall(r"\d+|\D+", text.lower())
+    return tuple(int(part) if part.isdigit() else part for part in parts)
+
+
+def _extract_chapter_number(path: str) -> int:
+    """
+    Try to extract a chapter number from the directory path.
+
+    Looks for patterns like "Chapitre XXXX", "Chapter XXXX", etc.
+
+    Args:
+        path: Full path in the ZIP file
+
+    Returns:
+        Chapter number if found, or 0 if not found
+    """
+    # Extract directory name (first component of path)
+    parts = Path(path).parts
+    if len(parts) > 1:
+        dir_name = parts[0].lower()
+        # Look for chapter/chapitre patterns
+        patterns = [
+            r"chapitre\s+(\d+)",  # French: Chapitre 1145
+            r"chapter\s+(\d+)",   # English: Chapter 1145
+            r"ch\.?\s+(\d+)",     # Abbreviated: Ch. 1145 or Ch 1145
+            r"^(\d+)",            # Just numbers: 1145
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, dir_name)
+            if match:
+                return int(match.group(1))
+    return 0
+
+
 def sorted_images(zip_file: zipfile.ZipFile):
     """
-    Extract and sort images from a ZIP file.
+    Extract and sort images from a ZIP file, respecting nested chapter structure.
 
-    Numeric names sort first, then alphabetically.
+    Sorts by:
+    1. Chapter number (if in nested directory structure)
+    2. Natural sort of filename (numeric chunks as integers)
+
+    This handles both flat structures (page_001.jpg, page_002.jpg) and
+    nested structures (Chapitre 1145/page_001.jpg, Chapitre 1146/page_001.jpg).
 
     Args:
         zip_file: Open ZipFile object
@@ -74,16 +139,21 @@ def sorted_images(zip_file: zipfile.ZipFile):
     if not images:
         raise CBZProcessingError("No image files found in CBZ")
 
-    def sort_key(x):
-        try:
-            return (0, int(Path(x).stem))
-        except ValueError:
-            return (1, x)
+    def sort_key(path: str):
+        # Extract chapter number if in nested structure
+        chapter_num = _extract_chapter_number(path)
+
+        # Extract filename for natural sort
+        filename_stem = Path(path).stem.lower()
+        filename_key = _extract_number_from_string(filename_stem)
+
+        # Sort: first by chapter number, then by filename
+        return (chapter_num, filename_key)
 
     return sorted(images, key=sort_key)
 
 
-def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None):
+def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None, show_progress=True):
     """
     Extracts images from CBZ files, renames them sequentially, and writes to output CBZ.
 
@@ -91,6 +161,8 @@ def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None):
         cbz_files: List of Path objects to CBZ files
         output_cbz: Path where output CBZ will be written
         cover_path: Optional Path to cover image file
+        metadata: Optional Metadata object to use for ComicInfo.xml
+        show_progress: Whether to render a progress bar for this job
 
     Raises:
         CBZProcessingError: If CBZ processing fails
@@ -125,13 +197,16 @@ def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None):
         # Dynamic padding (at least 3 digits)
         padding = max(3, len(str(total_images)))
 
-        metadata["PageCount"] = str(total_images)
+        if metadata is None:
+            metadata = Metadata()
 
-        comic_info_str = generate_comic_info_xml(metadata)
+        metadata.page_count = total_images
+
+        comic_info_str = metadata.to_comicinfo_xml()
 
 
         # Process with progress bar
-        with tqdm(total=total_images * 2 + 1, desc=f"Processing {output_cbz.name}", unit="", bar_format="{desc}: {percentage:3.0f}%|{bar}| [{elapsed}<{remaining}]") as pbar:
+        with tqdm(total=total_images * 2 + 1, desc=f"Processing {output_cbz.name}", unit="", bar_format="{desc}: {percentage:3.0f}%|{bar}| [{elapsed}<{remaining}]", disable=not show_progress) as pbar:
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_path = Path(tmp)
                 page_counter = 1
@@ -144,8 +219,13 @@ def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None):
                 if cover_path and cover_path.exists():
                     try:
                         cover_ext = cover_path.suffix.lower()
-                        cover_dest = tmp_path / f"{0:0{padding}d}{cover_ext}"
-                        shutil.copy2(cover_path, cover_dest)
+                        if cover_ext in KEEP_FORMAT_EXTENSIONS:
+                            output_ext = ".png" if cover_ext == ".png" else ".jpg"
+                            cover_dest = tmp_path / f"{0:0{padding}d}{output_ext}"
+                            shutil.copy2(cover_path, cover_dest)
+                        else:
+                            cover_dest = tmp_path / f"{0:0{padding}d}.jpg"
+                            _convert_to_jpg(cover_path, cover_dest)
                         pbar.update(1)
                     except IOError as e:
                         raise CBZProcessingError(f"Failed to copy cover image: {e}")
@@ -157,9 +237,18 @@ def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None):
                             for img_name in sorted_images(z):
                                 try:
                                     ext = Path(img_name).suffix.lower()
-                                    new_name = f"{page_counter:0{padding}d}{ext}"
+                                    output_ext = ".png" if ext == ".png" else ".jpg"
+                                    new_name = f"{page_counter:0{padding}d}{output_ext}"
                                     z.extract(img_name, tmp_path)
-                                    (tmp_path / img_name).rename(tmp_path / new_name)
+                                    extracted_path = tmp_path / img_name
+                                    destination_path = tmp_path / new_name
+
+                                    if ext in KEEP_FORMAT_EXTENSIONS:
+                                        extracted_path.rename(destination_path)
+                                    else:
+                                        _convert_to_jpg(extracted_path, destination_path)
+                                        extracted_path.unlink(missing_ok=True)
+
                                     page_counter += 1
                                     pbar.update(1)
                                 except Exception as e:
@@ -188,3 +277,162 @@ def process_cbz_images(cbz_files, output_cbz, cover_path=None, metadata=None):
     except Exception as e:
         raise CBZProcessingError(f"Unexpected error during CBZ processing: {e}")
 
+
+def cbz_to_epub(cbz_path: Path, epub_path: Path):
+    cbz_path = cbz_path.resolve()
+    epub_path = epub_path.resolve()
+
+    # Get ComicInfo.xml from cbz if it is present
+    with zipfile.ZipFile(cbz_path, "r") as z:
+        names = z.namelist()
+
+        comicinfo_bytes = None
+        if "ComicInfo.xml" in names:
+            comicinfo_bytes = z.read("ComicInfo.xml")
+        else:
+            for n in names:
+                if n.lower().endswith("/comicinfo.xml") or n.lower() == "comicinfo.xml":
+                    comicinfo_bytes = z.read(n)
+                    break
+
+
+def convert_nested_directory_to_cbz(
+    input_dir: Path,
+    output_cbz: Path,
+    metadata: Metadata = None,
+    show_progress: bool = True,
+) -> None:
+    """
+    Convert a directory with nested chapter structure (Chapitre XXXX/page_XXX.jpg) to flat CBZ.
+
+    This handles e-reader incompatible structures where images are organized in chapter folders.
+    Images are extracted recursively, sorted, and packed into a single flat CBZ file.
+
+    Args:
+        input_dir: Path to directory containing nested Chapitre folders
+        output_cbz: Path where output CBZ will be written
+        metadata: Optional Metadata object for ComicInfo.xml
+        show_progress: Whether to show a progress bar
+
+    Raises:
+        CBZProcessingError: If conversion fails
+    """
+    if not input_dir.is_dir():
+        raise CBZProcessingError(f"Input path is not a directory: {input_dir}")
+
+    # Recursively find all image files
+    image_files = []
+    for ext in IMAGE_EXTENSIONS:
+        image_files.extend(input_dir.rglob(f"*{ext}"))
+
+    if not image_files:
+        raise CBZProcessingError(f"No image files found in {input_dir}")
+
+    # Sort respecting chapter structure (similar to sorted_images from ZIP)
+    def sort_key(path: Path):
+        # Extract chapter number from directory if in nested structure
+        relative_path = path.relative_to(input_dir)
+        path_parts = relative_path.parts
+        
+        chapter_num = 0
+        if len(path_parts) > 1:
+            dir_name = path_parts[0].lower()
+            # Look for chapter/chapitre patterns
+            patterns = [
+                r"chapitre\s+(\d+)",  # French: Chapitre 1145
+                r"chapter\s+(\d+)",   # English: Chapter 1145
+                r"ch\.?\s+(\d+)",     # Abbreviated: Ch. 1145 or Ch 1145
+                r"^(\d+)",            # Just numbers: 1145
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, dir_name)
+                if match:
+                    chapter_num = int(match.group(1))
+                    break
+        
+        # Extract filename for natural sort
+        filename_stem = path.stem.lower()
+        filename_key = _extract_number_from_string(filename_stem)
+        
+        return (chapter_num, filename_key)
+
+    image_files.sort(key=sort_key)
+
+    if metadata is None:
+        metadata = Metadata()
+
+    metadata.page_count = len(image_files)
+    comic_info_str = metadata.to_comicinfo_xml()
+
+    # Process with progress bar
+    padding = max(3, len(str(len(image_files))))
+    total_operations = len(image_files) + 1  # +1 for comicinfo
+
+    with tqdm(
+        total=total_operations,
+        desc=f"Converting {input_dir.name} to {output_cbz.name}",
+        unit="file",
+        disable=not show_progress,
+    ) as pbar:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            # Write ComicInfo.xml
+            comicinfo_path = tmp_path / "ComicInfo.xml"
+            comicinfo_path.write_text(comic_info_str, encoding="utf-8", newline="\n")
+            pbar.update(1)
+
+            # Process and rename images
+            for i, img_path in enumerate(image_files, 1):
+                try:
+                    ext = img_path.suffix.lower()
+                    output_ext = ".png" if ext == ".png" else ".jpg"
+                    new_name = f"{i:0{padding}d}{output_ext}"
+                    dest_path = tmp_path / new_name
+
+                    if ext in KEEP_FORMAT_EXTENSIONS:
+                        shutil.copy2(img_path, dest_path)
+                    else:
+                        _convert_to_jpg(img_path, dest_path)
+
+                    pbar.update(1)
+                except Exception as e:
+                    raise CBZProcessingError(f"Failed to process image {img_path.name}: {e}")
+
+            # Create output CBZ
+            try:
+                output_cbz.parent.mkdir(parents=True, exist_ok=True)
+                images_to_write = sorted(tmp_path.glob("*"))
+
+                with zipfile.ZipFile(output_cbz, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                    for img in images_to_write:
+                        zf.write(img, img.name)
+
+            except IOError as e:
+                raise CBZProcessingError(f"Failed to create output CBZ: {e}")
+
+
+def sorted_files(files):
+    """
+    Sort files using natural sort (respecting nested directory structure if present).
+
+    This is the filesystem equivalent of sorted_images() for ZIP files.
+    It can handle both flat lists of files and paths with directory prefixes.
+
+    Args:
+        files: Iterable of Path objects to sort
+
+    Returns:
+        Sorted list of Path objects
+    """
+    def sort_key(path: Path):
+        # Extract chapter number from parent directory if applicable
+        chapter_num = _extract_chapter_number(str(path.parent / "dummy.jpg"))
+        
+        # Extract filename for natural sort
+        filename_stem = path.stem.lower()
+        filename_key = _extract_number_from_string(filename_stem)
+        
+        return (chapter_num, filename_key)
+
+    return sorted(files, key=sort_key)

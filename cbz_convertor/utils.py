@@ -2,42 +2,45 @@
 Utility functions for CBZ Convertor.
 """
 
-from typing import Any
+import sys
+from typing import Any, TextIO
+
+EMOJI_PREFIXES = {
+    "ok": "✅",
+    "done": "🎉",
+    "warning": "⚠️",
+    "error": "❌",
+    "info": "📘",
+}
+
+ASCII_PREFIXES = {
+    "ok": "OK",
+    "done": "Done",
+    "warning": "Warning",
+    "error": "Error",
+    "info": "Info",
+}
 
 
-from xml.etree.ElementTree import Element, SubElement, tostring
-from xml.dom import minidom
+def stream_supports_emoji(stream: TextIO | None = None) -> bool:
+    """Return True when the stream encoding supports writing emoji characters."""
+    if stream is None:
+        stream = sys.stdout
 
-def  generate_comic_info_xml(metadata: dict[str, Any]) -> str:
-    """
-    Generate ComicInfo.xml content from metadata dictionary.
-
-    Args:
-        metadata: Dictionary containing comic metadata
-    Returns:
-        str: ComicInfo.xml content
-    """
-
-    root = Element("ComicInfo")
-
-    xsd_fields = {
-        "Title", "Series", "Volume", "Summary", "Notes", "Year", "Writer", "Penciller", "Publisher", "Genre",
-        "PageCount", "LanguageISO"
-    }
-
-    for field in xsd_fields:
-        if field in metadata and metadata[field] is not None:
-            elem = SubElement(root, field)
-            if type(metadata[field]) == list:
-                elem.text = ", ".join(metadata[field])
-            else:
-                elem.text = str(metadata[field])
-
-    xml_str = minidom.parseString(tostring(root)).toprettyxml(indent="  ")
-
-    return "\n".join(line for line in xml_str.split("\n")[1:] if line.strip())
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    try:
+        "✅".encode(encoding)
+        return True
+    except (LookupError, UnicodeEncodeError):
+        return False
 
 
+def console_prefix(kind: str, stream: TextIO | None = None) -> str:
+    """Return an emoji prefix when supported, otherwise an ASCII fallback."""
+    if stream_supports_emoji(stream):
+        return EMOJI_PREFIXES.get(kind, "")
+
+    return ASCII_PREFIXES.get(kind, "")
 
 def get_nested_value(data: dict, *keys: str, default: Any = None) -> Any:
     """

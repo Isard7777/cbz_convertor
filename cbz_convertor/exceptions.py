@@ -22,3 +22,9 @@ class CBZProcessingError(CBZConvertorError):
     """Raised when CBZ file processing fails."""
     pass
 
+
+class ScraperError(CBZConvertorError):
+    """Raised when a scraping operation fails."""
+    pass
+
+
